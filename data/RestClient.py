@@ -43,7 +43,6 @@ class RestClient:
     def __init__(
         self,
         base_url: str,
-        auth_token: str,
         *,
         timeout: Union[float, tuple] = 10.0,
         default_headers: Optional[Dict[str, str]] = None,
@@ -51,13 +50,10 @@ class RestClient:
         backoff_factor: float = 0.3,
         status_forcelist: Optional[tuple] = (429, 500, 502, 503, 504),
     ):
-        if not base_url:
-            raise ValueError("base_url must be provided and non-empty.")
         # normalize base_url: remove trailing slash if present
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.default_headers = default_headers or {}
-        self.params = {'api_key': auth_token}
 
         self.session = requests.Session()
         self.session.headers.update(self.default_headers)
@@ -110,7 +106,10 @@ class RestClient:
 
         # join base + endpoint
         endpoint = endpoint.lstrip("/")  # ensure no double slash
-        url = f"{self.base_url}/{endpoint}"
+        if self.base_url:
+            url = f"{self.base_url}/{endpoint}"
+        else:
+            url = endpoint
 
         req_timeout = timeout if timeout is not None else self.timeout
         req_headers = {**(self.default_headers or {}), **(headers or {})}
