@@ -15,7 +15,7 @@ class AEMETClient():
     """
     def __init__(self, logger: logging.Logger):
         self.logger = logger
-        BASE = "https://opendata.aemet.es"
+        BASE = "https://opendata.aemet.es/opendata"
         load_dotenv()   
         self.params = {'api_key': os.environ.get("AEMET_API_KEY")}
         self.aemet_client = RestClient(
@@ -31,8 +31,14 @@ class AEMETClient():
         if hasattr(self, 'data_client'):
             self.data_client.close()
 
-    def get_municipios(self):
-        resp = self.aemet_client.get("/opendata/api/maestro/municipios", params=self.params)
+    def get_localities(self):
+        resp = self.aemet_client.get("/api/maestro/municipios", params=self.params)
+        payload = resp.json()
+        data = self.data_client.get(payload['datos'])
+        return data.json()
+
+    def get_stations(self):
+        resp = self.aemet_client.get("api/valores/climatologicos/inventarioestaciones/todasestaciones", params=self.params)
         payload = resp.json()
         data = self.data_client.get(payload['datos'])
         return data.json()

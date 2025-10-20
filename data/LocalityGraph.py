@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import math
@@ -61,6 +62,93 @@ class LocalityGraph:
     # -------------------------
     # Factory
     # -------------------------
+    def parse_coordinate(value: Any) -> Optional[float]:
+        """
+        Parse a coordinate in several formats and return decimal degrees (float).
+        Supported formats:
+          - Decimal: "40.54845854" or 40.54845854
+          - DMS with separators: 40º32'54.450744" or 40 32 54.450744
+          - Compact DMS with hemisphere: "394924N" => 39°49'24" N
+          - Signed DMS: "-0º48'28.084212\"" -> negative
+          - Strings may contain whitespace
+        Returns float degrees or None if cannot parse.
+        """
+        if value is None:
+            return None
+    
+        s = str(value).strip()
+        if s == "":
+            return None
+    
+        # 1) If it's already a simple decimal number
+        try:
+            return float(s)
+        except Exception:
+            pass
+        
+        # 2) DMS with separators (º,°, ', ", spaces, colons)
+        # Example: 40º32'54.450744"  or  -0 48 28.084212
+        dms_re = re.compile(r"""
+            ^\s*
+            (?P<sign>[-+])?                  # optional sign
+            \s*
+            (?P<deg>\d{1,3})                 # degrees (1-3 digits)
+            [^\d\w\-+]+                      # separator (º, space, :)
+            (?P<min>\d{1,2})                 # minutes
+            [^\d\w\-+]+                      # separator
+            (?P<sec>\d{1,2}(?:\.\d+)?)       # seconds (with optional decimals)
+            \s*
+            (?P<hem>[NnSsEeWw])?             # optional hemisphere
+            \s*$
+        """, re.VERBOSE)
+        m = dms_re.match(s)
+        if m:
+            deg = float(m.group("deg"))
+            minute = float(m.group("min"))
+            sec = float(m.group("sec"))
+            sign = -1.0 if m.group("sign") == "-" else 1.0
+            hem = m.group("hem")
+            if hem:
+                hem = hem.upper()
+                if hem in ("S", "W"):
+                    sign = -1.0
+            return sign * (abs(deg) + minute / 60.0 + sec / 3600.0)
+    
+        # 3) Compact DMS like 394924N or 025309E or 003530S
+        # Interpret as DDMMSSH or DDDMMSSH (if degrees could be 3 digits)
+        compact_re = re.compile(r"^\s*(?P<num>\d{5,7})(?P<hem>[NnSsEeWw])\s*$")
+        m2 = compact_re.match(s)
+        if m2:
+            num = m2.group("num")
+            hem = m2.group("hem").upper()
+            # decide split: if len 6 or 7, last two are seconds, previous two minutes, rest degrees
+            # e.g. 394924 -> 39 49 24 ; 025309 -> 02 53 09 ; 1234567 -> 123 45 67
+            n = len(num)
+            sec = float(num[-2:])
+            minute = float(num[-4:-2])
+            deg = float(num[: n - 4])
+            sign = -1.0 if hem in ("S", "W") else 1.0
+            return sign * (deg + minute / 60.0 + sec / 3600.0)
+    
+        # 4) Fallback: try to extract groups of numbers (loose parsing)
+        loose = re.findall(r"[-+]?\d+\.?\d*", s)
+        if len(loose) >= 3:
+            try:
+                deg = float(loose[0])
+                minute = float(loose[1])
+                sec = float(loose[2])
+                # Check for hemisphere letter at end
+                hem = s[-1].upper() if s[-1].isalpha() else None
+                sign = -1.0 if str(deg).startswith("-") else 1.0
+                if hem in ("S", "W"):
+                    sign = -1.0
+                return sign * (abs(deg) + minute / 60.0 + sec / 3600.0)
+            except Exception:
+                pass
+            
+        # give up
+        return None
+
     @classmethod
     def from_list(cls, localities: Iterable[Dict[str, Any]], logger: logging.Logger) -> "LocalityGraph":
         """
@@ -88,11 +176,10 @@ class LocalityGraph:
                 or loc.get("longitude")
                 or loc.get("longitud")
             )
-            try:
-                lat_f = float(lat)
-                lon_f = float(lon)
-            except Exception:
-                print("Skipping locality with invalid coords: %r", loc)
+            lat_f = cls.parse_coordinate(value=lat)
+            lon_f = cls.parse_coordinate(value=lon)
+            if lat_f is None or lon_f is None:
+                print("Skipping locality with unparsable coords: %r", loc)
                 continue
 
             alt_raw = loc.get("altitud") or loc.get("alt") or loc.get("elevation")
