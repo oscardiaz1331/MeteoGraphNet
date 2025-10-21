@@ -19,7 +19,7 @@ from sklearn.neighbors import BallTree
 import plotly.graph_objects as go
 import matplotlib.pyplot as plt
 
-class LocalityGraph:
+class LocationGraph:
     """
     Create and manage a spatial graph from locality dictionaries.
 
@@ -150,7 +150,7 @@ class LocalityGraph:
         return None
 
     @classmethod
-    def from_list(cls, localities: Iterable[Dict[str, Any]], logger: logging.Logger) -> "LocalityGraph":
+    def from_list(cls, localities: Iterable[Dict[str, Any]], logger: logging.Logger) -> "LocationGraph":
         """
         Build LocalityGraph from an iterable of locality dicts.
 
